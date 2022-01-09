@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdlib.h>
 
 typedef struct {
@@ -109,6 +108,7 @@ void smmh_delete_max(SMMH *smmh) {
 
 
 //only to test correctness, unnecessary for test (according to the "1101 DataStructure Final" document)
+#include <stdio.h>
 void smmh_lv_print(SMMH *smmh) {
     printf("NULL\n");
     int lv_last = 3;
