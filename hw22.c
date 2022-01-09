@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,37 +16,33 @@ typedef struct Node_t {
     struct Node_t *prev;
 } FiNode;
 
-struct {
+typedef struct FHeap{
     FiNode *min;
     int nodes_cnt;
     //record log(n) to avoid calculation
     int max_deg;
-} heap = {
-    .min=NULL, .nodes_cnt=0, .max_deg=0
-};
+} FHeap;
 //tool
 FiNode *meld(FiNode *, FiNode *);
 FiNode *find_min(FiNode *);
 FiNode *find(FiNode *, int, int);
+//create
+FHeap *create();
 //insert
-void fiheap_insert(int, int);
+void fiheap_insert(FHeap *, int, int);
 FiNode *new_node(int, int);
 //del
-FiNode *fiheap_del(int, int);
-void cas_cut(FiNode *);
-FiNode *fiheap_del_min();
+FiNode *fiheap_del(FHeap *, int, int);
+void cas_cut(FHeap *, FiNode *);
+FiNode *fiheap_del_min(FHeap *);
 void clr_parent(FiNode *);
-void merge_same_degree();
+void merge_same_degree(FHeap *);
 void merge_tr(FiNode *s, FiNode *n, FiNode *[]);
 FiNode *merge(FiNode *, FiNode *);
 //link all nodes in array, and attach to heap.min
-void relink(FiNode *[], int max_deg);
+void relink(FHeap *, FiNode *[], int max_deg);
 //decrease
-void fiheap_decr(int, int, int amount);
-//freeing
-void fiheap_free();
-void finode_link_free(FiNode *);
-void finode_free(FiNode *);
+void fiheap_decr(FHeap *, int, int, int amount);
 
 //make n2 next of n1, note it's not insert, so n1->next and n2->prev will be thrown away
 //link(a->prev, a->next) has equal effect as forming a list containing only a
@@ -81,18 +76,27 @@ FiNode *find_min(FiNode *n) {
     return !min ? n : min->key < n->key ? min : n;
 }
 
-void fiheap_insert(int key, int data) {
+FHeap *create() {
+    FHeap *heap = malloc(sizeof(FHeap));
+    if (!heap) return NULL;
+    heap->min = NULL;
+    heap->min = 0;
+    heap->max_deg = 0;
+    return heap;
+}
+
+void fiheap_insert(FHeap *heap, int key, int data) {
     //1. acquire new node
     FiNode *node = new_node(key, data);
     if (!node) return; //fail
 
     //2. meld node with top-level list and update min
-    heap.min = find_min(meld(node, heap.min));
+    heap->min = find_min(meld(node, heap->min));
     //3. update nodes count
-    heap.nodes_cnt++;
+    heap->nodes_cnt++;
     //4.update max possible degree
-    int mask = -1 << heap.max_deg;
-    heap.max_deg += (mask & heap.nodes_cnt)!=0;
+    int mask = -1 << heap->max_deg;
+    heap->max_deg += (mask & heap->nodes_cnt)!=0;
 }
 
 FiNode *new_node(int key, int data) {
@@ -109,14 +113,14 @@ FiNode *new_node(int key, int data) {
     return node;
 }
 
-FiNode *fiheap_del(int key, int value) {
+FiNode *fiheap_del(FHeap *heap, int key, int value) {
     //1. find the node to be deleted
-    FiNode *target = find(heap.min, key, value); //find will return NULL if heap.min is null
+    FiNode *target = find(heap->min, key, value); //find will return NULL if heap.min is null
     if (!target) return NULL;
-    FiNode *min = heap.min;
-    if (target == min) return fiheap_del_min();
+    FiNode *min = heap->min;
+    if (target == min) return fiheap_del_min(heap);
     //2. update nodes count
-    heap.nodes_cnt--;
+    heap->nodes_cnt--;
 
     //3. remove target from list
     FiNode *parent = target->parent;
@@ -130,12 +134,12 @@ FiNode *fiheap_del(int key, int value) {
 
     //4. melding child into top-level list, update min pointer
     clr_parent(target->child);
-    heap.min = find_min(meld(heap.min, target->child));
+    heap->min = find_min(meld(heap->min, target->child));
 
     //5. do or update cascading cut
     if (parent) {
         if (parent->child_cut) {
-            cas_cut(parent);
+            cas_cut(heap, parent);
         } else {
             parent->child_cut = 1;
         }
@@ -144,7 +148,7 @@ FiNode *fiheap_del(int key, int value) {
     return target;
 }
 
-void cas_cut(FiNode *target) {
+void cas_cut(FHeap *heap, FiNode *target) {
     if (!target->parent) return; //in top-level list, cascading cut has no effect
     //1. remove target from list
     target->parent->child = alone(target) ? NULL : target->next;
@@ -156,41 +160,41 @@ void cas_cut(FiNode *target) {
     link(target, target);
 
     //3. melding target to top-level list
-    heap.min = find_min(meld(heap.min, target));
+    heap->min = find_min(meld(heap->min, target));
     //4. update cascading cut info on target
     target->child_cut = 0;
 
     //5. upward cascading cut
     if (parent->child_cut) {
-        cas_cut(parent);
+        cas_cut(heap, parent);
     } else {
         parent->child_cut = 1;
     }
 }
 
 //since it requires returning, freeing node is caller's duty
-FiNode *fiheap_del_min() {
-    if (!heap.min) return NULL;
+FiNode *fiheap_del_min(FHeap *heap) {
+    if (!heap->min) return NULL;
 
     //1. update nodes count
-    FiNode *min = heap.min;
-    heap.nodes_cnt--;
+    FiNode *min = heap->min;
+    heap->nodes_cnt--;
     //2. clear the parent of children of min, preparing for melding with top-level list
     clr_parent(min->child);
 
     //3. remove min from top-level list, meld children with the list if necessary
     if (alone(min)) {
-        heap.min = find_min(min -> child);
+        heap->min = find_min(min -> child);
         if (!min -> child) return min; //just return, since there is no children or siblings
     } else {
         link(min->prev, min->next); //remove min from list
-        heap.min = meld(min->next, min->child);
+        heap->min = meld(min->next, min->child);
     }
 
     //4. do merging
-    merge_same_degree();
+    merge_same_degree(heap);
     //5. update min after merge
-    heap.min = find_min(heap.min);
+    heap->min = find_min(heap->min);
 
     return min;
 }
@@ -203,16 +207,16 @@ void clr_parent(FiNode *n) {
     n->prev->next = n;
 }
 
-void merge_same_degree() {
-    FiNode *deg_table[heap.max_deg + 1];
-    memset(deg_table, 0, sizeof(FiNode *) * (heap.max_deg + 1));
+void merge_same_degree(FHeap *heap) {
+    FiNode *deg_table[heap->max_deg + 1];
+    memset(deg_table, 0, sizeof(FiNode *) * (heap->max_deg + 1));
 
-    FiNode *pre = heap.min;
+    FiNode *pre = heap->min;
     deg_table[pre->degree] = pre;
     //1. traversely merge the list, put merged nodes into table
     merge_tr(pre, pre->next, deg_table);
     //2. link all nodes in table together, and attach the appropriate node to min
-    relink(deg_table, heap.max_deg);
+    relink(heap, deg_table, heap->max_deg);
 }
 
 void merge_tr(FiNode *s, FiNode *n, FiNode *table[]) {
@@ -244,7 +248,7 @@ FiNode *merge(FiNode *a, FiNode *b) {
     return a;
 }
 
-void relink(FiNode *deg_table[], int max_deg) {
+void relink(FHeap *heap, FiNode *deg_table[], int max_deg) {
     int i = 0;
     for (; i <= max_deg && !deg_table[i]; i++) ; //find first index with value
     if (i > max_deg) return; //nothing to link
@@ -259,12 +263,12 @@ void relink(FiNode *deg_table[], int max_deg) {
         previous = n;
     }
     link(previous, start);
-    heap.min = find_min(start);
+    heap->min = find_min(start);
 }
 
-void fiheap_decr(int key, int value, int amount) {
+void fiheap_decr(FHeap *heap, int key, int value, int amount) {
     //1. find the node to be decreased
-    FiNode *target = find(heap.min, key, value);
+    FiNode *target = find(heap->min, key, value);
     if (!target) return;
 
     //2. decrease
@@ -280,24 +284,24 @@ void fiheap_decr(int key, int value, int amount) {
         }
         link(target, target);
         //5. meld target with top-level list
-        meld(heap.min, target);
+        meld(heap->min, target);
 
         //6. cascading cut
         if (target->parent->child_cut) {
-            cas_cut(target->parent);
+            cas_cut(heap, target->parent);
         } else {
             target->parent->child_cut = 1;
         }
         target->parent = NULL; //moved to top-level list, shouldn't have a parent
     }
     //7. update min
-    heap.min = find_min(heap.min);
+    heap->min = find_min(heap->min);
 }
 
-void fiheap_free() {
-    finode_link_free(heap.min);
-}
 
+
+//only to test correctness, unnecessary for test (according to the "1101 DataStructure Final" document)
+void finode_free(FiNode *node);
 void finode_link_free(FiNode *n) {
     if (!n) return;
     n->prev->next = NULL;
@@ -309,31 +313,35 @@ void finode_free(FiNode *node) {
     finode_link_free(node->child);
     free(node);
 }
-
-
+void fiheap_free(FHeap *heap) {
+    finode_link_free(heap->min);
+    free(heap);
+}
+#include <stdio.h>
 int main() {
     char in[9];
+    FHeap *heap = create();
     while (1) {
         scanf("%s", in);
         int x, val;
         if (in[2] == 's') {
             scanf("%d %d", &x, &val);
-            fiheap_insert(x, val);
+            fiheap_insert(heap, x, val);
         } else if (in[2] == 't') {
-            FiNode *min = fiheap_del_min();
+            FiNode *min = fiheap_del_min(heap);
             if (min) {
                 printf("(%d)%d\n", min->key, min->data);
                 free(min);
             }
         } else if (in[2] == 'l') {
             scanf("%d %d", &x, &val);
-            fiheap_del(x, val);
+            fiheap_del(heap, x, val);
         } else if (in[2] == 'c') {
             int y;
             scanf("%d %d %d", &x, &val, &y);
-            fiheap_decr(x, val, y);
+            fiheap_decr(heap, x, val, y);
         } else if (in[2] == 'i') {
-            fiheap_free();
+            fiheap_free(heap);
             return 0;
         }
     }
