@@ -8,9 +8,9 @@ typedef struct avl_node {
 
     struct avl_node *left;
     struct avl_node *right;
+    struct avl_node *parent;
     int l_h;
     int r_h;
-    struct avl_node *parent;
 } avl_node;
 typedef struct {
     avl_node *root;
@@ -78,14 +78,12 @@ void lr_rot(avl_node *parent, avl_node **field) {
     avl_node *p = *field;
     avl_node *l = p->left;
     avl_node *lr = l->right;
-    avl_node *lrl = lr->left;
-    avl_node *lrr = lr->right;
     *field = lr;
     lr->parent = parent;
+    adopt(l, right, lr->left);
+    adopt(p, left, lr->right);
     adopt(lr, left, l);
     adopt(lr, right, p);
-    adopt(l, right, lrl);
-    adopt(p, left, lrr);
 
     l->r_h = h(l->right);
     l->l_h = h(l->left);
@@ -111,14 +109,12 @@ void rl_rot(avl_node *parent, avl_node **field) {
     avl_node *p = *field;
     avl_node *r = p->right;
     avl_node *rl = r->left;
-    avl_node *rll = rl->left;
-    avl_node *rlr = rl->right;
     *field = rl;
     rl->parent = parent;
+    adopt(r, left, rl->right);
+    adopt(p, right, rl->left);
     adopt(rl, left, p);
     adopt(rl, right, r);
-    adopt(p, right, rll);
-    adopt(r, left, rlr);
     p->l_h = h(p->left);
     p->r_h = h(p->right);
     p->bf = p->l_h - p->r_h;
@@ -163,7 +159,7 @@ void avl_delete(avl_tree *tree, int data) {
     avl_node *rep = target->left ? rightmost(target->left) : target->right ? leftmost(target->right) : target;
     target->data = rep->data;
     avl_node *parent = rep->parent;
-    avl_node *ava_node = rep->left ? rep->left : rep->right ? rep->right : NULL;
+    avl_node *ava_node = rep->left ? rep->left : rep->right;
     *field(rep) = ava_node;
     if (ava_node) ava_node->parent = parent;
     free(rep);
@@ -189,6 +185,9 @@ typedef struct rb_node {
     struct rb_node *right;
     struct rb_node *parent;
 } rb_node;
+typedef struct {
+    rb_node *root;
+} rb_tree;
 
 #include <stdlib.h>
 rb_node *new_rb_node(int data) {
@@ -201,670 +200,198 @@ rb_node *new_rb_node(int data) {
     new->parent = NULL;
     return new;
 }
+rb_tree *new_rb_tree() {
+    rb_tree *tree = malloc(sizeof(rb_tree));
+    if (!tree) return NULL;
+    tree->root = NULL;
+    return tree;
+}
 
 rb_node *red_black_search(rb_node *root, int data) {
     if (!root || root->data == data) return root;
     return red_black_search(data < root->data ? root->left : root->right, data);
 }
 
-void sort2(rb_node **s, rb_node **b) {
-    if ((*s)->data > (*b)->data) swap(*s, *b, rb_node *);
-}
-void sort(rb_node **s, rb_node **m, rb_node **l) {
-    //make l be the largest of 3
-    sort2(s, l);
-    sort2(m, l);
-    //then sort s and m
-    sort2(s, m);
-}
-
-//void ins_adjust(rb_node *n) {
-//    if (!n->parent) {
-//        n->color = black;
-//        return;
-//    }
-//    if (is_black(n) || is_black(n->parent)) return;
-//    rb_node *uncle = n->parent->parent->left == n->parent ? n->parent->parent->right : n->parent->parent->left;
-//    if (!is_black(uncle)) {
-//        n->parent->color = uncle->color = black;
-//        n->parent->parent->color = red;
-//        ins_adjust(n->parent->parent);
-//        return;
-//    }
-//
-//}
-
-//void inser(rb_node **root, rb_node *parent, int data) {
-//    if (!(*root)) {
-//        *root = new_rb_node(data);
-//        (*root)->parent = parent;
-//        if (!parent) (*root)->color = black;
-//        ins_adjust(*root);
-//    }
-//    if ((*root)->data == data) return;
-//    rb_node **pos = data < (*root)->data ? &(*root)->left : &(*root)->right;
-//    inser(pos, *root, data);
-//}
-
-//return the branch with consecutive red if root and child is red
-rb_node **insert(rb_node **root, int data) {
-    if (!(*root)) {
-        *root = new_rb_node(data);
-        return NULL;
-    }
-    if (data == (*root)->data) {
-        return NULL;
-    }
-
-    rb_node *grand_red;
-    int insert_left;
-    if (data < (*root)->data) {
-        rb_node *old_left = (*root)->left;
-        rb_node **grand_field_red = insert(&(*root)->left, data);
-        if (old_left != (*root)->left) {
-            (*root)->left->parent = *root;
-        }
-        if (!grand_field_red) {
-            if ((*root) -> color == red && (*root)->left->color == red) {
-                return &(*root)->left;
-            } else {
-                return NULL;
-            }
-        }
-        grand_red = *grand_field_red;
-        insert_left = 1;
-    } else {
-        rb_node *old_right = (*root)->right;
-        rb_node **grand_field_red = insert(&(*root)->right, data);
-        if (old_right != (*root)->right) {
-            (*root)->right->parent = *root;
-        }
-        if (!grand_field_red) {
-            if ((*root)->color == red && (*root)->right->color == red) {
-                return &(*root)->right;
-            } else {
-                return NULL;
-            }
-        }
-        grand_red = *grand_field_red;
-        insert_left = 0;
-    }
-
-    //consecutive red
-    rb_node *parent = *root;
-    if (insert_left) {
-        rb_node *child = (*root)->left;
-        if ((*root)->right && (*root)->right->color == red) {
-            parent->left->color = black;
-            parent->right->color = black;
-            parent->color = red;
-            return NULL;
-        } else {
-            sort(&child, &parent, &grand_red);
-
-            if (parent->left != child) {
-                child->right = parent->left;
-            }
-            if (child->right) {
-                child->right->parent = child;
-            }
-            grand_red->left = parent->right;
-            if (grand_red->left) {
-                grand_red->left->parent = grand_red;
-            }
-            parent->left = child;
-            parent->right = grand_red;
-            parent->parent = (*root)->parent;
-            child->parent = parent;
-            grand_red->parent = parent;
-            child->color = red;
-            grand_red->color = red;
-            parent->color = black;
-
-            *root = parent;
-            return NULL;
-        }
-    } else {
-        rb_node *child = (*root)->right;
-        if ((*root)->left && (*root)->left->color == red) {
-            parent->left->color = black;
-            parent->right->color = black;
-            parent->color = red;
-            return NULL;
-        } else {
-            sort(&child, &parent, &grand_red);
-            child->right = parent->left;
-            if (child->right) {
-                child->right->parent = child;
-            }
-            if (parent->right != grand_red) {
-                grand_red->left = parent->right;
-            }
-            if (grand_red->left) {
-                grand_red->left->parent = grand_red;
-            }
-            parent->left = child;
-            parent->right = grand_red;
-            parent->parent = (*root)->parent;
-            child->parent = parent;
-            grand_red->parent = parent;
-            child->color = red;
-            grand_red->color = red;
-            parent->color = black;
-
-            *root = parent;
-            return NULL;
-        }
-    }
+//parent is the one that contains field
+void rb_rr(rb_node *parent, rb_node **field) {
+    rb_node *p = *field;
+    rb_node *r = p->right;
+    *field = r;
+    r->parent = parent;
+    adopt(p, right, r->left);
+    adopt(r, left, p);
 }
 
-void red_black_insert(rb_node **root, int data) {
-    insert(root, data);
-    (*root)->color = black;
+void rb_rl(rb_node *parent, rb_node **field) {
+    rb_node *n = *field;
+    rb_node *r = n->right;
+    rb_node *rl = r->left;
+    *field = rl;
+    rl->parent = parent;
+    adopt(n, right, rl->left);
+    adopt(r, left, rl->right);
+    adopt(rl, left, n);
+    adopt(rl, right, r);
 }
 
-#include <assert.h>
-
-rb_node *get_b_node_root(rb_node *n) {
-    if (n->color == red) {
-        assert(n->parent->color == black);
-        return n->parent;
-    }
-    return n;
+void rb_ll(rb_node *parent, rb_node **field) {
+    rb_node *n = *field;
+    rb_node *l = n->left;
+    *field = l;
+    l->parent = parent;
+    adopt(n, left, l->right);
+    adopt(l, right, n);
 }
 
-//leaf here means the leaf in a 2-3-4 tree representation, not the actual leaf of rb tree
-//return whether in a leaf node, in 2-3-4 tree representation
-int is_leaf(rb_node *n) {
-    n = get_b_node_root(n);
-    assert(n->color == black);
-    //node with 1 number
-    if (!n->left && !n->right) {
-        return 1;
-    }
-
-    //with 2 numbers
-    if (n->left && n->left->color == red && !n->right) {
-        if (!n->left->left && !n->left->right) {
-            return 1;
-        } else {
-            //invalid rb tree
-            //black edge number incorrect
-            abort();
-        }
-    }
-    if (n->right && n->right->color == red && !n->left) {
-        if (!n->right->left && !n->right->right) {
-            return 1;
-        } else {
-            //invalid rb tree
-            //black edge number incorrect
-            abort();
-        }
-    }
-
-    //three numbers
-    return n->left && n->left->color == red && n->right && n->right->color == red &&
-           !n->left->left && !n->left->right && !n->right->left && !n->right->right;
+void rb_lr(rb_node *parent, rb_node **field) {
+    rb_node *n = *field;
+    rb_node *l = n->left;
+    rb_node *lr = l->right;
+    *field = lr;
+    lr->parent = parent;
+    adopt(n, left, lr->right);
+    adopt(l, right, lr->left);
+    adopt(lr, left, l);
+    adopt(lr, right, n);
 }
 
-//differ from find_replacer in b tree, this will return the accurate node (identical to *replace_num in original version)
-//the return value of original find_replacer can be obtained by get_b_node_root
-rb_node *find_replacer(rb_node *n) {
-    if (n->left) {
-        rb_node *current = n->left;
-        while (!is_leaf(current)) {
-            current = current->right;
-        }
-        if (current->color == black && current->right) {
-            current = current->right;
-        }
-        return current;
-    } else {
-        rb_node *current = n->right;
-        while(!is_leaf(current)) {
-            current = current->left;
-        }
-        if (current->color == black && current->left) {
-            current =  current->left;
-        }
-        return current;
-    }
-}
-
-//node -> node in b tree
-int node_with_one_number(rb_node *n) {
-    return n->color == black && (!n->left || n->left->color == black) && (!n->right || n->right->color == black);
-}
-
-int node_with_three_numbers(rb_node *n) {
-    n = get_b_node_root(n);
-    return n->left && n->left->color == red && n->right && n->right->color == red;
-}
-
-int node_with_two_number(rb_node *n) {
-    return !node_with_one_number(n) && !node_with_three_numbers(n);
-}
-
-rb_node *get_left_sibling(rb_node *parent, rb_node *n) {
-    parent = get_b_node_root(parent);
-    if (node_with_one_number(parent)) {
-        if (n == parent->left) return NULL;
-        return parent->left;
-    }
-
-    //two number
-    if (node_with_two_number(parent)) {
-        if (parent->right->color == red) {
-            if (n == parent->left) return NULL;
-            if (n == parent->right->left) return parent->left;
-            return parent->right->left;
-        } else {
-            if (n == parent->right) return parent->left->right;
-            if (n == parent->left->right) return parent->left->left;
-            return NULL;
-        }
-    }
-
-    //three number
-    if (n == parent->left->left) return NULL;
-    if (n == parent->left->right) return parent->left->left;
-    if (n == parent->right->left) return parent->left->right;
-    return parent->right->left;
-}
-
-rb_node *get_right_sibling(rb_node *parent, rb_node *n) {
-    parent = get_b_node_root(parent);
-    if (node_with_one_number(parent)) {
-        if (n == parent->right) return NULL;
-        return parent->right;
-    }
-
-    //two number
-    if (node_with_two_number(parent)) {
-        if (parent->right->color == red) {
-            if (n == parent->left) return parent->right->left;
-            if (n == parent->right->left) return parent->right->right;
-            return NULL;
-        } else {
-            if (n == parent->right) return NULL;
-            if (n == parent->left->right) return parent->right;
-            return parent->left->right;
-        }
-    }
-
-    //three number
-    if (n == parent->left->left) return parent->left->right;
-    if (n == parent->left->right) return parent->right->left;
-    if (n == parent->right->left) return parent->right->right;
-    return NULL;
-}
-
-rb_node *find_rotatable_sibling(rb_node *n, int *rot_sibling_is_left) {
-    n = get_b_node_root(n);
-    rb_node *left_sib = get_left_sibling(n->parent, n);
-    if (left_sib && !node_with_one_number(left_sib)) {
-        *rot_sibling_is_left = 1;
-        return left_sib;
-    }
-    rb_node *right_sib = get_right_sibling(n->parent, n);
-    if (right_sib && !node_with_one_number(right_sib)) {
-        *rot_sibling_is_left = 0;
-        return right_sib;
-    }
-    return NULL;
-}
-
-int max_number(rb_node *n) {
-    n = get_b_node_root(n);
-    if (node_with_one_number(n)) {
-        return n->data;
-    }
-    if (node_with_two_number(n)) {
-        if (n->right && n->right->color == red) {
-            return n->right->data;
-        }
-        return n->data;
-    }
-    return n->right->data;
-}
-
-int min_number(rb_node *n) {
-    n = get_b_node_root(n);
-    if (node_with_one_number(n)) {
-        return n->data;
-    }
-    if (node_with_two_number(n)) {
-        if (n->left && n->left->color == red) {
-            return n->left->data;
-        }
-        return n->data;
-    }
-    return n->left->data;
-}
-
-rb_node *detach_rightmost_b(rb_node *n) {
-    n = get_b_node_root(n);
-    assert(!node_with_one_number(n));
-    if (node_with_two_number(n)) {
-        if (n->right && n->right->color == red) {
-            rb_node *right = n->right;
-            n->right = right->left;
-            if (right->left) {
-                right->left->parent = n;
-            }
-            rb_node *rightmost = right->right;
-            free(right);
-            return rightmost;
-        } else {
-            n->data = n->left->data;
-            rb_node *rightmost = n->right;
-            n->right = n->left->right;
-            if (n->left->right) {
-                n->left->right->parent = n;
-            }
-            rb_node *left = n->left;
-            n->left = left->left;
-            if (left->left) {
-                left->left->parent = n;
-            }
-            free(left);
-            return rightmost;
-        }
-    }
-
-    rb_node *rightmost = n->right->right;
-    rb_node *right = n->right;
-    n->right = right->left;
-    if (right->left) {
-        right->left->parent = n;
-    }
-    free(right);
-    return rightmost;
-}
-
-rb_node *detach_leftmost_b(rb_node *n) {
-    n = get_b_node_root(n);
-    assert(!node_with_one_number(n));
-    if (node_with_two_number(n)) {
-        if (n->right && n->right->color == red) {
-            rb_node *leftmost = n->left;
-            n->data = n->right->data;
-            rb_node *right = n->right;
-            n->left = right->left;
-            if (right->left) {
-                right->left->parent = n;
-            }
-            n->right = right->right;
-            if (right->right) {
-                right->right->parent = n;
-            }
-            free(right);
-            return leftmost;
-        } else {
-            rb_node *leftmost = n->left->left;
-            rb_node *left = n->left;
-            n->left = left->right;
-            if (left->right) {
-                left->right->parent = n;
-            }
-            free(left);
-            return leftmost;
-        }
-    }
-
-    rb_node *leftmost = n->left->left;
-    rb_node *left = n->left;
-    n->left = left->right;
-    if (left->right) {
-        left->right->parent = n;
-    }
-    free(left);
-    return leftmost;
-}
-
-void rotate(rb_node *n, rb_node *sibling, int is_left_sib) {
-    n = get_b_node_root(n);
-    assert(node_with_one_number(n));
-    sibling = get_b_node_root(sibling);
-    assert(!node_with_one_number(sibling));
-
-    rb_node *via;
-    if (n->parent == sibling->parent) {
-        via = n->parent;
-    } else {
-        via = n->parent;
-        while(via->color != black) {
-            via = via->parent;
-        }
-    }
-    if (is_left_sib) {
-        n->data = via->data;
-        via->data = max_number(sibling);
-        rb_node *rightmost_b = detach_rightmost_b(sibling);
-        n->right = n->left;
-        n->left = rightmost_b;
-        if (rightmost_b) {
-            rightmost_b->parent = n;
-        }
-    } else {
-        n->data = via->data;
-        via->data = min_number(sibling);
-        rb_node *leftmost_b = detach_leftmost_b(sibling);
-        n->right = leftmost_b;
-        if (leftmost_b) {
-            leftmost_b->parent = n;
-        }
-    }
-}
-
-//special function for node with 2 numbers, since it has two representations in rb tree
-//rotated root of the node will be returned
-rb_node *change_representation(rb_node *n) {
-    n = get_b_node_root(n);
-    assert(node_with_two_number(n));
-    if (n->right->color == red) {
-        n->color = red;
-        n->right->color = black;
-        rb_node *f_right = n->right->left;
-        n->right->left = n;
-        n->right->parent = n->parent;
-        n->parent = n->right;
-        n->right = f_right;
-        if (f_right) {
-            f_right->parent = n;
-        }
-    } else {
-        n->color = red;
-        n->left->color = black;
-        rb_node *f_left = n->left->right;
-        n->left->right = n;
-        n->left->parent = n->parent;
-        n->parent = n->left;
-        n->left = f_left;
-        if (f_left) {
-            f_left->parent = n;
-        }
-    }
-    return n->parent;
-}
-
-//the parent of n might change, for simplicity when n->parent contains two numbers
-rb_node *safe_combine(rb_node *n) {
-    assert(!node_with_one_number(n->parent));
-    if (node_with_three_numbers(n->parent)) {
-        rb_node *sib;
-        rb_node *parent = n->parent;
-        if (n == parent->left) {
-            sib = parent->right;
-        } else {
-            sib = parent->left;
-        }
-        parent->color = black;
-        sib->color = red;
-        if (n == parent->left) {
-            parent->left = n->left;
-            if (n->left) {
-                n->left->parent = parent;
-            }
-        } else {
-            parent->right = n->left;
-            if (n->left) {
-                n->left->parent = parent;
-            }
-        }
-        free(n);
-        return parent;
-    }
-    //two number
-    rb_node *parent = n->parent;
-    if (parent->color == black) {
-        parent = change_representation(parent);
-    }
-    assert(n->parent->color == red);
-    if (n == n->parent->left) {
-        n->parent->color = black;
-        n->parent->right->color = red;
-        n->parent->left = n->left;
-        if (n->left) {
-            n->left->parent = n->parent;
-        }
-        free(n);
-    } else {
-        n->parent->color = black;
-        n->parent->left->color = red;
-        n->parent->right = n->left;
-        if (n->left) {
-            n->left->parent = n->parent;
-        }
-        free(n);
-    }
-    return parent;
-}
-
-rb_node *unsafe_combine(rb_node *n) {
-    if (n == n->parent->left) {
-        n->data = n->parent->data;
-        n->right = n->parent->right;
-        if (n->parent->right) {
-            n->parent->right->parent = n;
-        }
+void ins_adjust(rb_node *n, rb_node **root) {
+    if (!n->parent) {
         n->color = black;
-        n->right->color = red;
-        n->parent->right = NULL;
-        return n;
+        return;
+    }
+    if (is_black(n) || is_black(n->parent)) return;
+    rb_node *grand = n->parent->parent;
+    rb_node *uncle = grand->left == n->parent ? grand->right : grand->left;
+    if (!is_black(uncle)) {
+        n->parent->color = uncle->color = black;
+        n->parent->parent->color = red;
+        ins_adjust(n->parent->parent, root);
+        return;
+    }
+    rb_node **f = field(grand) ? field(grand) : root;
+    if (grand->right && n == grand->right->right) rb_rr(grand->parent, f);
+    else if (grand->left && n == grand->left->right) rb_lr(grand->parent, f);
+    else if (grand->left && n == grand->left->left) rb_ll(grand->parent, f);
+    else rb_rl(grand->parent, f);
+
+    (*f)->color = black;
+    (*f)->left->color = red;
+    (*f)->right->color = red;
+}
+
+void insert_n(rb_node **pos, rb_node *parent, int data, rb_node **root) {
+    if (!(*pos)) {
+        *pos = new_rb_node(data);
+        (*pos)->parent = parent;
+        if (!parent) (*pos)->color = black;
+        ins_adjust(*pos, root);
+        return;
+    }
+    if ((*pos)->data == data) return;
+    rb_node **p = data < (*pos)->data ? &(*pos)->left : &(*pos)->right;
+    insert_n(p, *pos, data, root);
+}
+
+void red_black_insert(rb_tree *tree, int data) {
+    insert_n(&tree->root, NULL, data, &tree->root);
+}
+
+#include <stdio.h>
+void remove_fix(rb_node *parent, rb_node **changed) {
+    //sibling of changed
+    int l;
+    rb_node *sib = (l = &parent->left == changed) ? parent->right : parent->left;
+    rb_node **f = field(parent);
+    if (sib->color == red) {
+        //change representation
+        l ? rb_rr(parent->parent, f) : rb_ll(parent->parent, f);
+        (*f)->color = black;
+        parent->color = red;
+        remove_fix(parent, l ? &parent->left : &parent->right);
+        return;
+    }
+
+    int p_color = parent->color;
+    if (!is_black(sib->left)) {
+        //rotate
+        if(l) {
+            rb_rl(parent->parent, f);
+        } else {
+            rb_ll(parent->parent, f);
+            sib->left->color = black;
+        }
+        (*f)->color = parent->color;
+        parent->color = black;
+    } else if (!is_black(sib->right)) {
+        //rotate
+        if (l) {
+            rb_rr(parent->parent, f);
+            sib->right->color = black;
+        } else {
+            rb_lr(parent->parent, f);
+        }
+        (*f)->color = parent->color;
+        parent->color = black;
+    } else if (parent->color == red) {
+        //safe_comb
+        sib->color = red;
+        parent->color = black;
     } else {
-        n->data = n->parent->data;
-        rb_node *f_parent = n->parent->left;
-        n->right = n->left;
-        n->left = f_parent->right;
-        if (f_parent->right) {
-            f_parent->right->parent = n;
-        }
-        f_parent->right = n;
-        n->parent = f_parent;
-        f_parent->color = black;
-        n->color = red;
-        f_parent->parent->right = NULL;
-        return f_parent;
+        //unsafe_comb
+        sib->color = red;
+        remove_fix(parent->parent, field(parent));
     }
 }
 
-rb_node *try_rotate_or_combine(rb_node *root, rb_node *n) {
-    int rot_sibling_is_left;
-    rb_node *rotate_sibling = find_rotatable_sibling(n, &rot_sibling_is_left);
-    if (rotate_sibling) {
-        rotate(n, rotate_sibling, rot_sibling_is_left);
-        return root;
-    }
-
-    //combine
-    if (!node_with_one_number(n->parent)) {
-        //safe combine
-        rb_node *r = get_b_node_root(n)->parent;
-        if (r->parent) {
-            rb_node *parent = r->parent;
-            if (r->parent->left == r) {
-                r = safe_combine(n);
-                parent->left = r;
-                r->parent = parent;
-            } else {
-                r = safe_combine(n);
-                parent->right = r;
-                r->parent = parent;
-            }
-            return root;
-        } else if (r == root){
-            r = safe_combine(n);
-            return r;
-        } else {
-            //invalid
-            assert(0);
-        }
-    }
-
-    //unsafe combine
-    n = unsafe_combine(n);
-    if (n->parent == root) {
-        n->parent = NULL;
-        return n;
-    }
-    return try_rotate_or_combine(root, n->parent);
-}
-
-//same function as remove_leaf_node in b tree
-rb_node *delete_leaf_node(rb_node *root, rb_node *n) {
-    if (!node_with_one_number(n)) {
-        if (n->color == red) {
-            //just delete
-            if (n == n->parent->left) {
-                n->parent->left = NULL;
-            } else {
-                n->parent->right = NULL;
-            }
-            free(n);
-            return root;
-        } else {
-            if (n->left && n->left->color == red) {
-                n->data = n->left->data;
-                free(n->left);
-                n->left = NULL;
-            } else {
-                n->data = n->right->data;
-                free(n->right);
-                n->right = NULL;
-            }
-            return root;
-        }
-    }
-
-    if (n == root) {
-        free(n);
-        return NULL;
-    }
-    return try_rotate_or_combine(root, n);
-}
-
-//Since rb tree is an alternative representation of b tree,
-//delete will be implemented in a structure similar to that of b tree deletion
-void red_black_delete(rb_node **root, int data) {
-    if (!*root)  return;
-
-    rb_node *n = red_black_search(*root, data);
+void rb_remove(rb_tree *tree, int data) {
+    if (!tree->root) return;
+    rb_node *n = red_black_search(tree->root, data);
     if (!n) return;
-
-    if (data == 63554) {
-        goto n;
+    //here we intentionally laid out the first 5 fields of 2 node type in a same way
+    //so rightmost and leftmost and be reuse
+    rb_node *rep = n->left ? rightmost(n->left) : n->right ? leftmost(n->right) : n;
+    if (!rep->parent) {
+        free(rep);
+        tree->root = NULL;
+        return;
     }
-    n:
-    if (!is_leaf(n)) {
-        rb_node *replacer = find_replacer(n);
-        n->data = replacer->data;
-        n = replacer;
+    n->data = rep->data;
+    rb_node *ava = rep->left ? rep->left : rep->right;
+    rb_node **f = field(rep);
+    *f = ava;
+    if (ava) ava->parent = rep->parent;
+    if (rep->color == red) {
+        free(rep);
+        return;
     }
-
-    *root = delete_leaf_node(*root, n);
+    if (ava) {
+        assert(ava->color == red);
+        ava->color = black;
+        free(rep);
+        return;
+    }
+    remove_fix(rep->parent, f);
+    free(rep);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void red_black_free(rb_node *root) {
     if (!root) return;
@@ -872,20 +399,6 @@ void red_black_free(rb_node *root) {
     red_black_free(root->right);
     free(root);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 void free_avl(avl_node *root) {
     if (!root) return;
@@ -921,7 +434,6 @@ void rb_balance(void *n) {
         printf("Not found\n");
     }
 }
-
 
 int main() {
     char tree_type[10];
@@ -967,29 +479,28 @@ int main() {
         }
     } else {
         char cmd[7];
-        rb_node *tree = NULL;
+        rb_tree *tree = new_rb_tree(); //new
         while (1) {
             scanf("%s", cmd);
             int x;
             switch (cmd[0]) {
                 case 'i': {
                     scanf("%d", &x);
-                    red_black_insert(&tree, x);
+                    red_black_insert(tree, x);
                     break;
                 }
                 case 's': {
                     scanf("%d", &x);
-                    rb_balance(red_black_search(tree, x));
+                    rb_balance(red_black_search(tree->root, x));
                     break;
                 }
                 case 'd': {
                     scanf("%d", &x);
-                    red_black_delete(&tree, x);
+                    rb_remove(tree, x);
                     break;
                 }
-                case 'e': {
-                    scanf("%d", &x);
-                    if (red_black_search(tree, x)) {
+                case 'e': {scanf("%d", &x);
+                    if (red_black_search(tree->root, x)) {
                         printf("exist\n");
                     } else {
                         printf("Not exist\n");
@@ -997,7 +508,8 @@ int main() {
                     break;
                 }
                 case 'q': {
-                    red_black_free(tree);
+                    red_black_free(tree->root);
+                    free(tree);
                     return 0;
                 }
             }
